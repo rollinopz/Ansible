@@ -1,0 +1,73 @@
+---
+- name: Install Jenkins on appServers
+  hosts: appServers
+  become: true
+
+  vars:
+    jenkins_version: "latest"  # Modify this variable to specify the Jenkins version you want to install
+    jenkins_port: 8080          # Modify this variable to set the Jenkins web interface port
+    jenkins_java_opts: "-Xmx512m -Djenkins.install.runSetupWizard=false"  # Modify this variable to configure Java options for Jenkins
+
+  tasks:
+    - name: Update apt cache (for Debian/Ubuntu)
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+    - name: Install Java (for Debian/Ubuntu)
+      apt:
+        name: openjdk-11-jdk
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Install Java (for RedHat/CentOS)
+      yum:
+        name: java-11-openjdk
+        state: present
+      when: ansible_os_family == "RedHat"
+
+    - name: Add Jenkins APT repository (for Debian/Ubuntu)
+      apt_repository:
+        repo: "deb http://pkg.jenkins.io/debian-stable binary/"
+        state: present
+        filename: "jenkins"
+        update_cache: yes
+        key_url: "https://pkg.jenkins.io/debian-stable/jenkins.io.key"
+      when: ansible_os_family == "Debian"
+
+    - name: Add Jenkins YUM repository (for RedHat/CentOS)
+      yum_repository:
+        name: jenkins
+        description: Jenkins Stable
+        baseurl: https://pkg.jenkins.io/redhat-stable
+        gpgcheck: yes
+        gpgkey: https://pkg.jenkins.io/redhat-stable/jenkins.io.key
+        enabled: yes
+      when: ansible_os_family == "RedHat"
+
+    - name: Install Jenkins
+      package:
+        name: jenkins
+        state: "{{ 'present' if jenkins_version == 'latest' else 'specific' }}"
+        version: "{{ jenkins_version }}"
+      notify:
+        - Start Jenkins Service
+
+    - name: Set Jenkins port in configuration file
+      lineinfile:
+        path: /etc/default/jenkins
+        regexp: '^HTTP_PORT='
+        line: "HTTP_PORT={{ jenkins_port }}"
+      notify:
+        - Restart Jenkins Service
+
+  handlers:
+    - name: Start Jenkins Service
+      service:
+        name: jenkins
+        state: started
+
+    - name: Restart Jenkins Service
+      service:
+        name: jenkins
+        state: restarted
